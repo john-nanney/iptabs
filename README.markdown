@@ -58,6 +58,12 @@ If SSHGuard is installed, enable support for it:
 
 By default SYN protection is enabled, XMAS packets are dropped, NULL packets are dropped, and FIN scans are logged for programs like PSAD. Any of these can be optionally disabled.
 
+To dump the netfilter commands to a file:
+
+	iptabs --dump-to netfilter.sh
+
+This will write the commands to the file `netfilter.sh` instead of executing them. This is particularly handy on servers that do not have Perl installed.
+
 Port Knocking
 -------------
 

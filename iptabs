@@ -3,10 +3,6 @@
 use warnings;
 use strict;
 
-#------------------------------#
-# Dirt simple firewall script. #
-#------------------------------#
-
 my $use_sshguard = 0;
 my $use_forward = 0;
 my $drop_ipv6 = 0;
@@ -18,6 +14,7 @@ my $drop_nullpackets = 1;
 my $drop_finscans = 1;
 my $no_knock_log = 0;
 my @tcp_knock_services;
+my $dump_to;
 
 sub Usage {
 	print("\n");
@@ -71,12 +68,22 @@ sub Usage {
 	print("--no-knock-log\n");
 	print("\tDo not log port knock attempts. Use if PSAD is used on the host.\n");
 	print("\n");
+	print("--dump-to\n");
+	print("\tDump the netfilter commands to the given file instead of executing them.\n");
+	print("\n");
 	exit(1);
 }
 
 sub execute_or_die {
-	die("Execute what?\n") unless(@_ > 0 && length($_[0]));
-	die("Could not execute " . $_[0] . " : $!\n") if(system($_[0]));
+
+	if(length($dump_to)) {
+		open(OUT, ">>$dump_to") or die("Cannot append $dump_to $!\n");
+		print(OUT join(" ", @_), "\n");
+		close(OUT);
+	} else {
+		die("Execute what?\n") unless(@_ > 0 && length($_[0]));
+		die("Could not execute " . $_[0] . " : $!\n") if(system($_[0]));
+	}
 }
 
 sub add_rule {
@@ -156,6 +163,16 @@ while(scalar(@ARGV)) {
 	} elsif($opt =~ m/^--no-knock-log$/) {
 		print("Disabling port knock logging.\n");
 		$no_knock_log = 1;
+
+	} elsif($opt =~ m/^--dump-to$/) {
+		if(!scalar(@ARGV)) {
+			print("ERROR: --dump-to requires an argument.\n");
+			Usage();
+		}
+		$dump_to = shift(@ARGV);
+		open(DUMP, ">$dump_to") or die("Cannot write to $dump_to $!\n");
+		print(DUMP "#!/bin/bash\n");
+		close(DUMP);
 
 	} else {
 		print("\n ERROR: Unrecognized command $opt\n") unless($opt =~ m/^--help$/);
