@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+# This software is public domain and has no express or implied warranty.
+
 use warnings;
 use strict;
 
