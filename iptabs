@@ -40,6 +40,9 @@ sub Usage {
 	print("--enable-udp UDPSERVICELIST\n");
 	print("\tUDPSERVICELIST works like SERVICELIST above for UDP ports.\n");
 	print("\n");
+	print("--interface INTERFACE\n");
+	print("\tSpecify an interface for following rules. Use --interface all to specify all interfaces.\n");
+	print("\n");
 	print("--sshguard\n");
 	print("\tEnable SSHGuard protection. SSHGuard must be installed.\n");
 	print("\n");
