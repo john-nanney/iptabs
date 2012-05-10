@@ -16,7 +16,10 @@ my $drop_nullpackets = 1;
 my $drop_finscans = 1;
 my $no_knock_log = 0;
 my @tcp_knock_services;
+my @tcp_services;
+my @udp_services;
 my $dump_to;
+my $iface = "all";
 
 sub Usage {
 	print("\n");
@@ -104,14 +107,21 @@ sub process_arguments {
 				print("ERROR: --enable-tcp requires an argument.\n");
 				Usage();
 			}
-			$service_string = shift(@ARGV);
+			push(@tcp_services, $iface . ":" . shift(@ARGV));
 
 		} elsif($opt =~ m/^--enable-udp$/) {
 			if(!scalar(@ARGV)) {
 				print("ERROR: --enable-udp requires an argument.\n");
 				Usage();
 			}
-			$udp_service_string = shift(@ARGV);
+			push(@udp_services, $iface . ":" . shift(@ARGV));
+
+		} elsif($opt =~ m/^--interface$/) {
+			if(!scalar(@ARGV)) {
+				print("ERROR: --interface requires an argument.\n");
+				Usage();
+			}
+			$iface = shift(@ARGV);
 
 		} elsif($opt =~ m/^--sshguard$/) {
 			$use_sshguard = 1;
@@ -177,6 +187,8 @@ sub process_arguments {
 }
 
 sub clear_all_tables {
+
+	return if(length($dump_to));
 
 	# Flush all tables
 	execute_or_die("iptables -F");
@@ -283,14 +295,12 @@ sub do_knocking {
 # Entry point #
 #-------------#
 
-my $service_string = "";
-my $udp_service_string = "";
-
 print("\n");
 
 process_arguments;
 
-$service_string = "ssh" unless(length($service_string));
+# If nothing specified, default to allowing SSH on all interfaces
+push(@tcp_services, "all:ssh") unless(scalar(@tcp_services));
 
 clear_all_tables;
 
@@ -326,14 +336,24 @@ if($use_sshguard) {
 	add_rule("-A INPUT -j sshguard");
 }
 
-foreach my $service (split(/,/, $service_string)) {
-	print("Enabling $service (TCP)\n");
-	add_rule("-A INPUT -p tcp --dport $service -j ACCEPT");
+foreach my $tcp_service_string (@tcp_services) {
+	my ($tcp_iface, $service_string) = split(/:/, $tcp_service_string);
+	foreach my $service (split(/,/, $service_string)) {
+		print("Enabling $service (TCP)\n");
+		my $tcp_iface_param = "";
+		$tcp_iface_param = " -i $tcp_iface" unless($tcp_iface =~ m/^all/);
+		add_rule("-A INPUT$tcp_iface_param -p tcp --dport $service -j ACCEPT");
+	}
 }
 
-foreach my $udpservice (split(/,/, $udp_service_string)) {
-	print("Enabling $udpservice (UDP)\n");
-	add_rule("-A INPUT -p udp --dport $udpservice -j ACCEPT");
+foreach my $udp_service_string (@udp_services) {
+	my ($udp_iface, $udp_service_string) = split(/:/, $udp_service_string);
+	foreach my $udpservice (split(/,/, $udp_service_string)) {
+		print("Enabling $udpservice (UDP)\n");
+		my $udp_iface_param = "";
+		$udp_iface_param = " -i $udp_iface" unless($udp_iface =~ m/^all/);
+		add_rule("-A INPUT$udp_iface_param -p udp --dport $udpservice -j ACCEPT");
+	}
 }
 
 # Add logging for PSAD
