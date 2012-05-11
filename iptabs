@@ -16,7 +16,10 @@ my $drop_nullpackets = 1;
 my $drop_finscans = 1;
 my $no_knock_log = 0;
 my @tcp_knock_services;
+my @tcp_services;
+my @udp_services;
 my $dump_to;
+my $iface = "all";
 
 sub Usage {
 	print("\n");
@@ -36,6 +39,9 @@ sub Usage {
 	print("\n");
 	print("--enable-udp UDPSERVICELIST\n");
 	print("\tUDPSERVICELIST works like SERVICELIST above for UDP ports.\n");
+	print("\n");
+	print("--interface INTERFACE\n");
+	print("\tSpecify an interface for following rules. Use --interface all to specify all interfaces.\n");
 	print("\n");
 	print("--sshguard\n");
 	print("\tEnable SSHGuard protection. SSHGuard must be installed.\n");
@@ -94,130 +100,212 @@ sub add_rule {
 	execute_or_die("ip6tables " . join(" ", @_)) unless($drop_ipv6);
 }
 
+sub process_arguments {
+
+# Process args
+	while(scalar(@ARGV)) {
+		my $opt = shift(@ARGV);
+		if($opt =~ /^--enable-tcp$/) {
+			if(!scalar(@ARGV)) {
+				print("ERROR: --enable-tcp requires an argument.\n");
+				Usage();
+			}
+			push(@tcp_services, $iface . ":" . shift(@ARGV));
+
+		} elsif($opt =~ m/^--enable-udp$/) {
+			if(!scalar(@ARGV)) {
+				print("ERROR: --enable-udp requires an argument.\n");
+				Usage();
+			}
+			push(@udp_services, $iface . ":" . shift(@ARGV));
+
+		} elsif($opt =~ m/^--interface$/) {
+			if(!scalar(@ARGV)) {
+				print("ERROR: --interface requires an argument.\n");
+				Usage();
+			}
+			$iface = shift(@ARGV);
+
+		} elsif($opt =~ m/^--sshguard$/) {
+			$use_sshguard = 1;
+
+		} elsif($opt =~ m/^--forward$/) {
+			$use_forward = 1;
+			print("WARNING: Enabling forwarding. Please add additional rules to the FORWARD chain.\n");
+
+		} elsif($opt =~ m/^--drop-ipv6$/) {
+			$drop_ipv6 = 1;
+			print("WARNING: Dropping all IPv6 traffic.\n");
+
+		} elsif($opt =~ m/^--drop-ping$/) {
+			$drop_ping = 1;
+			print("Dropping all ping traffic.\n");
+
+		} elsif($opt =~ m/^--no-drop-null$/) {
+			$drop_nullpackets = 0;
+			print("WARNING: Not dropping all NULL packets.\n");
+
+		} elsif($opt =~ m/^--no-drop-fragments$/) {
+			$drop_fragments = 0;
+			print("Not dropping all fragments.\n");
+
+		} elsif($opt =~ m/^--no-syn-protect$/) {
+			$use_synprotect = 0;
+			print("WARNING: Not using SYN protection.\n");
+
+		} elsif($opt =~ m/^--no-drop-xmas$/) {
+			$drop_xmas = 0;
+			print("WARNING: Not dropping XMAS packets.\n");
+
+		} elsif($opt =~ m/^--no-drop-finscans$/) {
+			$drop_finscans = 0;
+			print("WARNING: Not dropping FIN scan packets.\n");
+
+		} elsif($opt =~ m/^--knock$/) {
+			if(!scalar(@ARGV) || $ARGV[0] !~ m/^([a-zA-Z0-9]+:){4}[a-zA-Z0-9]+[ \t\r\n]?$/) {
+				print("ERROR: --knock requires an argument.\n");
+				Usage();
+			}
+			push(@tcp_knock_services, shift(@ARGV));
+
+		} elsif($opt =~ m/^--no-knock-log$/) {
+			print("Disabling port knock logging.\n");
+			$no_knock_log = 1;
+
+		} elsif($opt =~ m/^--dump-to$/) {
+			if(!scalar(@ARGV)) {
+				print("ERROR: --dump-to requires an argument.\n");
+				Usage();
+			}
+			$dump_to = shift(@ARGV);
+			open(DUMP, ">$dump_to") or die("Cannot write to $dump_to $!\n");
+			print(DUMP "#!/bin/bash\n");
+			close(DUMP);
+
+		} else {
+			print("\n ERROR: Unrecognized command $opt\n") unless($opt =~ m/^--help$/);
+			Usage();
+		}
+	}
+}
+
+sub clear_all_tables {
+
+	return if(length($dump_to));
+
+	# Flush all tables
+	execute_or_die("iptables -F");
+	execute_or_die("ip6tables -F");
+
+	# Set default policies on INPUT and OUTPUT chains
+	# This is for remote sysadmins who just empty the chains
+	# and then find themselves locked out.
+	add_rule("-P INPUT ACCEPT");
+	add_rule("-P OUTPUT ACCEPT");
+
+	# Remove stale IPv4 chains
+	open(CHAINPIPE, "iptables -L |") or die("Cannot read chain list from iptables: $!\n");
+	while(<CHAINPIPE>) {
+		next unless($_ =~ m/^Chain\s+/);
+		my ($chaindummy, $chain, @restdummy) = split(/\s+/);
+		next if($chain =~ m/^INPUT$/);
+		next if($chain =~ m/^FORWARD$/);
+		next if($chain =~ m/^OUTPUT$/);
+		print("Removing stale IPv4 chain $chain\n");
+		execute_or_die("iptables -X $chain");
+	}
+	close(CHAINPIPE);
+
+	# Remove stale IPv6 chains
+	open(CHAIN6PIPE, "ip6tables -L |") or die("Cannot read chain list from ip6tables: $!\n");
+	while(<CHAIN6PIPE>) {
+		next unless($_ =~ m/^Chain\s+/);
+		my ($chaindummy, $chain, @restdummy) = split(/\s+/);
+		next if($chain =~ m/^INPUT$/);
+		next if($chain =~ m/^FORWARD$/);
+		next if($chain =~ m/^OUTPUT$/);
+		print("Removing stale IPv6 chain $chain\n");
+		execute_or_die("ip6tables -X $chain");
+	}
+	close(CHAIN6PIPE);
+}
+
+sub scan_protection {
+
+	# Drop fragments
+	if($drop_fragments) {
+		execute_or_die("iptables -A INPUT -f -j DROP");
+		execute_or_die("ip6tables -A INPUT -m frag --fragfirst -j DROP");
+		execute_or_die("ip6tables -A INPUT -m frag --fragmore -j DROP");
+		execute_or_die("ip6tables -A INPUT -m frag --fraglast -j DROP");
+	}
+
+	# New connections should begin with a SYN
+	add_rule("-A INPUT -p tcp ! --syn -m state --state NEW  -m limit --limit 5/m --limit-burst 7 -j LOG --log-level 4 --log-prefix \"Drop Syn\"");
+	add_rule("-A INPUT -p tcp ! --syn -m state --state NEW -j DROP") if($use_synprotect);
+
+	# Detect XMAS packets
+	add_rule("-A INPUT -p tcp --tcp-flags SYN,FIN SYN,FIN -m limit --limit 5/m --limit-burst 7 -j LOG --log-level 4 --log-prefix \"XMAS Packets\"");
+	add_rule("-A INPUT -p tcp --tcp-flags ALL ALL -j DROP") if($drop_xmas);
+
+	# Detect FIN packet scans
+	add_rule("-A INPUT -p tcp --tcp-flags FIN,ACK FIN -m limit --limit 5/m --limit-burst 7 -j LOG --log-level 4 --log-prefix \"FIN Packet Scan\"");
+	add_rule("-A INPUT -p tcp --tcp-flags FIN,ACK FIN -j DROP") if($drop_finscans);
+
+	# Drop NULL packets
+	add_rule("-A INPUT -p tcp --tcp-flags ALL NONE -m limit --limit 5/m --limit-burst 7 -j LOG --log-level 4 --log-prefix \"NULL Packets\"");
+	add_rule("-A INPUT -p tcp --tcp-flags ALL NONE -j DROP") if($drop_nullpackets);
+}
+
+sub do_knocking {
+
+	foreach my $knockserv (@tcp_knock_services) {
+		chomp($knockserv);
+		my ($serv, $one, $two, $three, $four) = split(/:/, $knockserv);
+
+		print("Enabling port knock sequence $one $two $three $four for service $serv\n");
+
+		add_rule("-N $serv-INTO-PHASE2");
+		add_rule("-A $serv-INTO-PHASE2 -m recent --name $serv-PHASE1 --remove");
+		add_rule("-A $serv-INTO-PHASE2 -m recent --name $serv-PHASE2 --set");
+		add_rule("-A $serv-INTO-PHASE2 -j LOG --log-prefix \"INTO $serv-PHASE2: \"") unless($no_knock_log);
+
+		add_rule("-N $serv-INTO-PHASE3");
+		add_rule("-A $serv-INTO-PHASE3 -m recent --name $serv-PHASE2 --remove");
+		add_rule("-A $serv-INTO-PHASE3 -m recent --name $serv-PHASE3 --set");
+		add_rule("-A $serv-INTO-PHASE3 -j LOG --log-prefix \"INTO $serv-PHASE3: \"") unless($no_knock_log);
+
+		add_rule("-N $serv-INTO-PHASE4");
+		add_rule("-A $serv-INTO-PHASE4 -m recent --name $serv-PHASE3 --remove");
+		add_rule("-A $serv-INTO-PHASE4 -m recent --name $serv-PHASE4 --set");
+		add_rule("-A $serv-INTO-PHASE4 -j LOG --log-prefix \"INTO $serv-PHASE4: \"") unless($no_knock_log);
+
+		add_rule("-A INPUT -m recent --update --name $serv-PHASE1");
+
+		add_rule("-A INPUT -p tcp --dport $one -m recent --set --name $serv-PHASE1");
+		# add_rule("-A INPUT -p tcp --dport $one -j LOG --log-prefix \"INTO $serv-PHASE1: \"") unless($no_knock_log);
+
+		add_rule("-A INPUT -p tcp --dport $two -m recent --rcheck --name $serv-PHASE1 -j $serv-INTO-PHASE2");
+		add_rule("-A INPUT -p tcp --dport $three -m recent --rcheck --name $serv-PHASE2 -j $serv-INTO-PHASE3");
+		add_rule("-A INPUT -p tcp --dport $four -m recent --rcheck --name $serv-PHASE3 -j $serv-INTO-PHASE4");
+
+		add_rule("-A INPUT -p tcp --syn --dport $serv -m recent --rcheck --seconds 5 --name $serv-PHASE4 -j LOG --log-prefix \"KNOCK UNLOCK: \"") unless($no_knock_log);
+		add_rule("-A INPUT -p tcp --syn --dport $serv -m recent --rcheck --seconds 5 --name $serv-PHASE4 -j ACCEPT");
+	}
+}
+
 #-------------#
 # Entry point #
 #-------------#
 
-my $service_string = "";
-my $udp_service_string = "";
-
 print("\n");
 
-# Process args
-while(scalar(@ARGV)) {
-	my $opt = shift(@ARGV);
-	if($opt =~ /^--enable-tcp$/) {
-		if(!scalar(@ARGV)) {
-			print("ERROR: --enable-tcp requires an argument.\n");
-			Usage();
-		}
-		$service_string = shift(@ARGV);
+process_arguments;
 
-	} elsif($opt =~ m/^--enable-udp$/) {
-		if(!scalar(@ARGV)) {
-			print("ERROR: --enable-udp requires an argument.\n");
-			Usage();
-		}
-		$udp_service_string = shift(@ARGV);
+# If nothing specified, default to allowing SSH on all interfaces
+push(@tcp_services, "all:ssh") unless(scalar(@tcp_services));
 
-	} elsif($opt =~ m/^--sshguard$/) {
-		$use_sshguard = 1;
-
-	} elsif($opt =~ m/^--forward$/) {
-		$use_forward = 1;
-		print("WARNING: Enabling forwarding. Please add additional rules to the FORWARD chain.\n");
-
-	} elsif($opt =~ m/^--drop-ipv6$/) {
-		$drop_ipv6 = 1;
-		print("WARNING: Dropping all IPv6 traffic.\n");
-
-	} elsif($opt =~ m/^--drop-ping$/) {
-		$drop_ping = 1;
-		print("Dropping all ping traffic.\n");
-
-	} elsif($opt =~ m/^--no-drop-null$/) {
-		$drop_nullpackets = 0;
-		print("WARNING: Not dropping all NULL packets.\n");
-
-	} elsif($opt =~ m/^--no-drop-fragments$/) {
-		$drop_fragments = 0;
-		print("Not dropping all fragments.\n");
-
-	} elsif($opt =~ m/^--no-syn-protect$/) {
-		$use_synprotect = 0;
-		print("WARNING: Not using SYN protection.\n");
-
-	} elsif($opt =~ m/^--no-drop-xmas$/) {
-		$drop_xmas = 0;
-		print("WARNING: Not dropping XMAS packets.\n");
-
-	} elsif($opt =~ m/^--no-drop-finscans$/) {
-		$drop_finscans = 0;
-		print("WARNING: Not dropping FIN scan packets.\n");
-
-	} elsif($opt =~ m/^--knock$/) {
-		if(!scalar(@ARGV) || $ARGV[0] !~ m/^([a-zA-Z0-9]+:){4}[a-zA-Z0-9]+[ \t\r\n]?$/) {
-			print("ERROR: --knock requires an argument.\n");
-			Usage();
-		}
-		push(@tcp_knock_services, shift(@ARGV));
-
-	} elsif($opt =~ m/^--no-knock-log$/) {
-		print("Disabling port knock logging.\n");
-		$no_knock_log = 1;
-
-	} elsif($opt =~ m/^--dump-to$/) {
-		if(!scalar(@ARGV)) {
-			print("ERROR: --dump-to requires an argument.\n");
-			Usage();
-		}
-		$dump_to = shift(@ARGV);
-		open(DUMP, ">$dump_to") or die("Cannot write to $dump_to $!\n");
-		print(DUMP "#!/bin/bash\n");
-		close(DUMP);
-
-	} else {
-		print("\n ERROR: Unrecognized command $opt\n") unless($opt =~ m/^--help$/);
-		Usage();
-	}
-}
-
-$service_string = "ssh" unless(length($service_string));
-
-# Flush all tables
-execute_or_die("iptables -F");
-execute_or_die("ip6tables -F");
-
-# Set default policies on INPUT and OUTPUT chains
-# This is for remote sysadmins who just empty the chains
-# and then find themselves locked out.
-add_rule("-P INPUT ACCEPT");
-add_rule("-P OUTPUT ACCEPT");
-
-# Remove stale IPv4 chains
-open(CHAINPIPE, "iptables -L |") or die("Cannot read chain list from iptables: $!\n");
-while(<CHAINPIPE>) {
-	next unless($_ =~ m/^Chain\s+/);
-	my ($chaindummy, $chain, @restdummy) = split(/\s+/);
-	next if($chain =~ m/^INPUT$/);
-	next if($chain =~ m/^FORWARD$/);
-	next if($chain =~ m/^OUTPUT$/);
-	print("Removing stale IPv4 chain $chain\n");
-	execute_or_die("iptables -X $chain");
-}
-close(CHAINPIPE);
-
-open(CHAIN6PIPE, "ip6tables -L |") or die("Cannot read chain list from ip6tables: $!\n");
-while(<CHAIN6PIPE>) {
-	next unless($_ =~ m/^Chain\s+/);
-	my ($chaindummy, $chain, @restdummy) = split(/\s+/);
-	next if($chain =~ m/^INPUT$/);
-	next if($chain =~ m/^FORWARD$/);
-	next if($chain =~ m/^OUTPUT$/);
-	print("Removing stale IPv6 chain $chain\n");
-	execute_or_die("ip6tables -X $chain");
-}
-close(CHAIN6PIPE);
+clear_all_tables;
 
 # Deal with forwarding
 unless($use_forward) {
@@ -235,70 +323,15 @@ if($drop_ipv6) {
 	execute_or_die("ip6tables -A INPUT -j DROP");
 }
 
-
 # Handle pings by limiting to 2 per second
 add_rule("-A INPUT -p icmp -m limit --limit 2/second --limit-burst 3 -j ACCEPT") unless($drop_ping);
 
-# Drop fragments
-if($drop_fragments) {
-	execute_or_die("iptables -A INPUT -f -j DROP");
-	execute_or_die("ip6tables -A INPUT -m frag --fragfirst -j DROP");
-	execute_or_die("ip6tables -A INPUT -m frag --fragmore -j DROP");
-	execute_or_die("ip6tables -A INPUT -m frag --fraglast -j DROP");
-}
-
-# New connections should begin with a SYN
-add_rule("-A INPUT -p tcp ! --syn -m state --state NEW  -m limit --limit 5/m --limit-burst 7 -j LOG --log-level 4 --log-prefix \"Drop Syn\"");
-add_rule("-A INPUT -p tcp ! --syn -m state --state NEW -j DROP") if($use_synprotect);
-
-# Detect XMAS packets
-add_rule("-A INPUT -p tcp --tcp-flags SYN,FIN SYN,FIN -m limit --limit 5/m --limit-burst 7 -j LOG --log-level 4 --log-prefix \"XMAS Packets\"");
-add_rule("-A INPUT -p tcp --tcp-flags ALL ALL -j DROP") if($drop_xmas);
-
-# Detect FIN packet scans
-add_rule("-A INPUT -p tcp --tcp-flags FIN,ACK FIN -m limit --limit 5/m --limit-burst 7 -j LOG --log-level 4 --log-prefix \"FIN Packet Scan\"");
-add_rule("-A INPUT -p tcp --tcp-flags FIN,ACK FIN -j DROP") if($drop_finscans);
-
-# Drop NULL packets
-add_rule("-A INPUT -p tcp --tcp-flags ALL NONE -m limit --limit 5/m --limit-burst 7 -j LOG --log-level 4 --log-prefix \"NULL Packets\"");
-add_rule("-A INPUT -p tcp --tcp-flags ALL NONE -j DROP") if($drop_nullpackets);
+scan_protection;
 
 # Accept anything we originated
 add_rule("-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT");
 
-foreach my $knockserv (@tcp_knock_services) {
-	chomp($knockserv);
-	my ($serv, $one, $two, $three, $four) = split(/:/, $knockserv);
-
-	print("Enabling port knock sequence $one $two $three $four for service $serv\n");
-
-	add_rule("-N $serv-INTO-PHASE2");
-	add_rule("-A $serv-INTO-PHASE2 -m recent --name $serv-PHASE1 --remove");
-	add_rule("-A $serv-INTO-PHASE2 -m recent --name $serv-PHASE2 --set");
-	add_rule("-A $serv-INTO-PHASE2 -j LOG --log-prefix \"INTO $serv-PHASE2: \"") unless($no_knock_log);
-
-	add_rule("-N $serv-INTO-PHASE3");
-	add_rule("-A $serv-INTO-PHASE3 -m recent --name $serv-PHASE2 --remove");
-	add_rule("-A $serv-INTO-PHASE3 -m recent --name $serv-PHASE3 --set");
-	add_rule("-A $serv-INTO-PHASE3 -j LOG --log-prefix \"INTO $serv-PHASE3: \"") unless($no_knock_log);
-
-	add_rule("-N $serv-INTO-PHASE4");
-	add_rule("-A $serv-INTO-PHASE4 -m recent --name $serv-PHASE3 --remove");
-	add_rule("-A $serv-INTO-PHASE4 -m recent --name $serv-PHASE4 --set");
-	add_rule("-A $serv-INTO-PHASE4 -j LOG --log-prefix \"INTO $serv-PHASE4: \"") unless($no_knock_log);
-
-	add_rule("-A INPUT -m recent --update --name $serv-PHASE1");
-
-	add_rule("-A INPUT -p tcp --dport $one -m recent --set --name $serv-PHASE1");
-	# add_rule("-A INPUT -p tcp --dport $one -j LOG --log-prefix \"INTO $serv-PHASE1: \"") unless($no_knock_log);
-
-	add_rule("-A INPUT -p tcp --dport $two -m recent --rcheck --name $serv-PHASE1 -j $serv-INTO-PHASE2");
-	add_rule("-A INPUT -p tcp --dport $three -m recent --rcheck --name $serv-PHASE2 -j $serv-INTO-PHASE3");
-	add_rule("-A INPUT -p tcp --dport $four -m recent --rcheck --name $serv-PHASE3 -j $serv-INTO-PHASE4");
-
-	add_rule("-A INPUT -p tcp --syn --dport $serv -m recent --rcheck --seconds 5 --name $serv-PHASE4 -j LOG --log-prefix \"KNOCK UNLOCK: \"") unless($no_knock_log);
-	add_rule("-A INPUT -p tcp --syn --dport $serv -m recent --rcheck --seconds 5 --name $serv-PHASE4 -j ACCEPT");
-}
+do_knocking if(scalar(@tcp_knock_services));
 
 if($use_sshguard) {
 	print("Enabling SSHGuard protection.\n");
@@ -306,14 +339,24 @@ if($use_sshguard) {
 	add_rule("-A INPUT -j sshguard");
 }
 
-foreach my $service (split(/,/, $service_string)) {
-	print("Enabling $service (TCP)\n");
-	add_rule("-A INPUT -p tcp --dport $service -j ACCEPT");
+foreach my $tcp_service_string (@tcp_services) {
+	my ($tcp_iface, $service_string) = split(/:/, $tcp_service_string);
+	foreach my $service (split(/,/, $service_string)) {
+		print("Enabling $service (TCP)\n");
+		my $tcp_iface_param = "";
+		$tcp_iface_param = " -i $tcp_iface" unless($tcp_iface =~ m/^all/);
+		add_rule("-A INPUT$tcp_iface_param -p tcp --dport $service -j ACCEPT");
+	}
 }
 
-foreach my $udpservice (split(/,/, $udp_service_string)) {
-	print("Enabling $udpservice (UDP)\n");
-	add_rule("-A INPUT -p udp --dport $udpservice -j ACCEPT");
+foreach my $udp_service_string (@udp_services) {
+	my ($udp_iface, $udp_service_string) = split(/:/, $udp_service_string);
+	foreach my $udpservice (split(/,/, $udp_service_string)) {
+		print("Enabling $udpservice (UDP)\n");
+		my $udp_iface_param = "";
+		$udp_iface_param = " -i $udp_iface" unless($udp_iface =~ m/^all/);
+		add_rule("-A INPUT$udp_iface_param -p udp --dport $udpservice -j ACCEPT");
+	}
 }
 
 # Add logging for PSAD

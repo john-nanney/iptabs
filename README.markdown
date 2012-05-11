@@ -14,6 +14,7 @@ Features
 * Avoiding many types of port scans
 * Logging for Port Scan detection
 * Optional Multiple Port Knocking
+* Optional Multi-home support
 
 Invocation
 ----------
@@ -51,6 +52,16 @@ UDP services can also be enabled:
 Any combination of TCP and UDP ports can be specified:
 
 	iptabs --enable-tcp ssh,ftp,ftp-data --enable-udp tftp
+
+Multiple interfaces are supported via the `--interface` option. The interface will take effect for rules specifed after it. As a common example, assume `eth0` is the private network, and `eth1` is the public network. SSH should be allowed only on the public interface, but http and https should be allowed on all interfaces.
+
+	iptabes --interface eth0 --enable-tcp ssh --interface all www,https
+
+Or, since `--interface all` is the default:
+
+	iptabes --enable-tcp http,https --interface eth0 --enable-tcp ssh
+
+No validation is done to the interface specifier, so watch your output carefully, iptables and ip6tables will produce an error if the interface specifier is not correct.
 
 If SSHGuard is installed, enable support for it:
 
