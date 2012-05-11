@@ -110,14 +110,14 @@ sub process_arguments {
 				print("ERROR: --enable-tcp requires an argument.\n");
 				Usage();
 			}
-			push(@tcp_services, $iface . ":" . shift(@ARGV));
+			push(@tcp_services, $iface . "#" . shift(@ARGV));
 
 		} elsif($opt =~ m/^--enable-udp$/) {
 			if(!scalar(@ARGV)) {
 				print("ERROR: --enable-udp requires an argument.\n");
 				Usage();
 			}
-			push(@udp_services, $iface . ":" . shift(@ARGV));
+			push(@udp_services, $iface . "#" . shift(@ARGV));
 
 		} elsif($opt =~ m/^--interface$/) {
 			if(!scalar(@ARGV)) {
@@ -340,7 +340,7 @@ if($use_sshguard) {
 }
 
 foreach my $tcp_service_string (@tcp_services) {
-	my ($tcp_iface, $service_string) = split(/:/, $tcp_service_string);
+	my ($tcp_iface, $service_string) = split(/#/, $tcp_service_string);
 	foreach my $service (split(/,/, $service_string)) {
 		print("Enabling $service (TCP)\n");
 		my $tcp_iface_param = "";
@@ -350,7 +350,7 @@ foreach my $tcp_service_string (@tcp_services) {
 }
 
 foreach my $udp_service_string (@udp_services) {
-	my ($udp_iface, $udp_service_string) = split(/:/, $udp_service_string);
+	my ($udp_iface, $udp_service_string) = split(/#/, $udp_service_string);
 	foreach my $udpservice (split(/,/, $udp_service_string)) {
 		print("Enabling $udpservice (UDP)\n");
 		my $udp_iface_param = "";
