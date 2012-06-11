@@ -15,6 +15,7 @@ Features
 * Logging for Port Scan detection
 * Optional Multiple Port Knocking
 * Optional Multi-home support
+* Optional whitelisting of trusted hosts
 
 Invocation
 ----------
@@ -91,5 +92,12 @@ Each service can have its own port knock sequence. Remember not to enable SSH vi
 If some sort of external port scan detector is in use port knocking can trigger it. If this occurs, disable port knock logging:
 
 	iptabs --knock ssh:444:333:222:111 --no-knock-log
+
+To set a host, list of hosts, or a network as 'trusted' use the `--whitelist` option (multiple invocations are supported):
+
+	iptabs --whitelist 192.168.1.0/24
+	iptabs --whitelist 10.1.1.2/31,10.1.1.1/32 --dump-to output.sh --whitelist 10.5.0.0/16
+
+Be very careful with this option, it bypassses everything, including port specifiers and sshguard. Whitelisting is only supported for IPv4 for now.
 
 Enjoy!
