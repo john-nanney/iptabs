@@ -20,6 +20,7 @@ my @tcp_services;
 my @udp_services;
 my $dump_to;
 my $iface = "all";
+my @whitelist;
 
 sub Usage {
 	print("\n");
@@ -182,6 +183,14 @@ sub process_arguments {
 			print(DUMP "#!/bin/bash\n");
 			close(DUMP);
 
+		} elsif($opt =~ m/^--whitelist$/) {
+			if(!scalar(@ARGV)) {
+				print("ERROR: --whitelist requires an argument.\n");
+				Usage();
+			}
+			my $whitelist = shift(@ARGV);
+			push(@whitelist, split(/,/, $whitelist));
+
 		} else {
 			print("\n ERROR: Unrecognized command $opt\n") unless($opt =~ m/^--help$/);
 			Usage();
@@ -228,6 +237,13 @@ sub clear_all_tables {
 		execute_or_die("ip6tables -X $chain");
 	}
 	close(CHAIN6PIPE);
+}
+
+sub add_whitelist {
+	my $saved_ipv6 = $drop_ipv6;
+	$drop_ipv6 = 1;
+	map { add_rule("-A ACCEPT -s $_ -j ACCEPT"); } @whitelist;
+	$drop_ipv6 = $saved_ipv6;
 }
 
 sub scan_protection {
@@ -325,6 +341,9 @@ if($drop_ipv6) {
 
 # Handle pings by limiting to 2 per second
 add_rule("-A INPUT -p icmp -m limit --limit 2/second --limit-burst 3 -j ACCEPT") unless($drop_ping);
+
+add_whitelist;
+
 
 scan_protection;
 
