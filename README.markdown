@@ -100,4 +100,6 @@ To set a host, list of hosts, or a network as 'trusted' use the `--whitelist` op
 
 Be very careful with this option, it bypassses everything, including port specifiers and sshguard. Whitelisting is only supported for IPv4 for now.
 
+If you do not know what this means or why you might need it, please do not use whitelisting at all. It can make your carefully constructed firewall worthless.
+
 Enjoy!
