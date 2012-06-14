@@ -93,6 +93,9 @@ If some sort of external port scan detector is in use port knocking can trigger 
 
 	iptabs --knock ssh:444:333:222:111 --no-knock-log
 
+Whitelisting
+------------
+
 To set a host, list of hosts, or a network as 'trusted' use the `--whitelist` option:
 
 	iptabs --whitelist 192.168.1.0/24
