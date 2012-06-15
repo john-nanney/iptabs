@@ -20,6 +20,7 @@ my @tcp_services;
 my @udp_services;
 my $dump_to;
 my $iface = "all";
+my @by_spec;
 my @whitelist;
 
 sub Usage {
@@ -79,6 +80,9 @@ sub Usage {
 	print("\n");
 	print("--dump-to\n");
 	print("\tDump the netfilter commands to the given file instead of executing them.\n");
+	print("\n");
+	print("--by-spec\n");
+	print("\tAllow the ports, protocol, and network/host specified by the argument string, e.g. 127.0.0.1/32:tcp:22,80,443\n");
 	print("\n");
 	exit(1);
 }
@@ -183,6 +187,18 @@ sub process_arguments {
 			print(DUMP "#!/bin/bash\n");
 			close(DUMP);
 
+		} elsif($opt =~ m/^--by-spec$/) {
+			if(!scalar(@ARGV)) {
+				print("ERROR: --by-spec requires an argument.\n");
+				Usage();
+			}
+			my $specstr = shift(@ARGV);
+			chomp($specstr);
+			unless($specstr =~ m/^[0-9\.]+\/[0-9]+:[tu][cd]p:[0-9,]+$/) {
+				print("ERROR: --by-spec Cannot figure out spec string.\n");
+				Usage();
+			}
+			push(@by_spec, $specstr);
 		} elsif($opt =~ m/^--whitelist$/) {
 			if(!scalar(@ARGV)) {
 				print("ERROR: --whitelist requires an argument.\n");
@@ -319,7 +335,7 @@ print("\n");
 process_arguments;
 
 # If nothing specified, default to allowing SSH on all interfaces
-push(@tcp_services, "all:ssh") unless(scalar(@tcp_services));
+push(@tcp_services, "all:ssh") unless(scalar(@tcp_services) || scalar(@by_spec) || scalar(@whitelist));
 
 clear_all_tables;
 
@@ -344,7 +360,6 @@ add_rule("-A INPUT -p icmp -m limit --limit 2/second --limit-burst 3 -j ACCEPT")
 
 add_whitelist;
 
-
 scan_protection;
 
 # Accept anything we originated
@@ -356,6 +371,13 @@ if($use_sshguard) {
 	print("Enabling SSHGuard protection.\n");
 	add_rule("-N sshguard");
 	add_rule("-A INPUT -j sshguard");
+}
+
+foreach my $spec (@by_spec) {
+	my ($nh, $protocol, $ports) = split(/:/, $spec);
+	foreach my $p (split(/,/, $ports)) {
+		add_rule("-A INPUT -p $protocol -s $nh --dport $p -j ACCEPT");
+	}
 }
 
 foreach my $tcp_service_string (@tcp_services) {
@@ -385,5 +407,5 @@ add_rule("-A FORWARD -j LOG");
 # Drop anything not explicitly matched.
 add_rule("-A INPUT -j DROP");
 
-print("\nAll done.\nFor Ubuntu use 'service iptables-persistent save' to make settings persistent across reboots.\n\n");
+print("\nAll done.\nFor Ubuntu use 'service iptables-persistent save' to make settings persistent across reboots.\n\n") unless(defined($dump_to) && length($dump_to));
 exit(0);
