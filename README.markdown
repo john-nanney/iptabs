@@ -93,6 +93,19 @@ If some sort of external port scan detector is in use port knocking can trigger 
 
 	iptabs --knock ssh:444:333:222:111 --no-knock-log
 
+Specified by Network/Host
+-------------------------
+
+A list of allowed ports can also be specified by a network or host string. For example, to allow SSH only from the 192.168.1.0 network:
+
+	iptabs --by-spec 192.168.1.0/24:tcp:ssh
+
+Multiple ports may be specified:
+
+	iptabs --by-spec 192.168.1.0/24:tcp:ssh,http,443
+
+Multiple invocations of `--by-spec` are allowed. Unlike `--whitelist` the traffic is subject to the other rules, such as SSHGuard and port scan detection.
+
 Whitelisting
 ------------
 
