@@ -22,6 +22,7 @@ my $dump_to;
 my $iface = "all";
 my @by_spec;
 my @whitelist;
+my $clearonly = 0;
 
 sub Usage {
 	print("\n");
@@ -83,6 +84,9 @@ sub Usage {
 	print("\n");
 	print("--by-spec\n");
 	print("\tAllow the ports, protocol, and network/host specified by the argument string, e.g. 127.0.0.1/32:tcp:22,80,443\n");
+	print("\n");
+	print("--clear\n");
+	print("\tJust clear the existing firewall rules and exit.\n");
 	print("\n");
 	exit(1);
 }
@@ -206,6 +210,9 @@ sub process_arguments {
 			}
 			my $whitelist = shift(@ARGV);
 			push(@whitelist, split(/,/, $whitelist));
+
+		} elsif($opt =~ m/^--clear$/) {
+			$clearonly = 1;
 
 		} else {
 			print("\n ERROR: Unrecognized command $opt\n") unless($opt =~ m/^--help$/);
@@ -338,6 +345,8 @@ process_arguments;
 push(@tcp_services, "all:ssh") unless(scalar(@tcp_services) || scalar(@by_spec) || scalar(@whitelist));
 
 clear_all_tables;
+
+exit(0) if($clearonly);
 
 # Deal with forwarding
 unless($use_forward) {
