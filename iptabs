@@ -382,12 +382,16 @@ if($use_sshguard) {
 	add_rule("-A INPUT -j sshguard");
 }
 
+# IPv6 doesn't grok IPv4 addresses
+my $saveddropipv6 = $drop_ipv6;
+$drop_ipv6 = 1;
 foreach my $spec (@by_spec) {
 	my ($nh, $protocol, $ports) = split(/:/, $spec);
 	foreach my $p (split(/,/, $ports)) {
 		add_rule("-A INPUT -p $protocol -s $nh --dport $p -j ACCEPT");
 	}
 }
+$drop_ipv6 = $saveddropipv6;
 
 foreach my $tcp_service_string (@tcp_services) {
 	my ($tcp_iface, $service_string) = split(/#/, $tcp_service_string);
