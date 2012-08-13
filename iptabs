@@ -23,6 +23,7 @@ my $iface = "all";
 my @by_spec;
 my @whitelist;
 my $clearonly = 0;
+my @trustedifaces;
 
 sub Usage {
 	print("\n");
@@ -87,6 +88,9 @@ sub Usage {
 	print("\n");
 	print("--clear\n");
 	print("\tJust clear the existing firewall rules and exit.\n");
+	print("\n");
+	print("--trusted-iface IFACE[,IFACEx ...]\n");
+	print("\tMark the interface[s] as trusted, permitting all traffic. Loopback is automatically trusted, so do not add it with this option.\n");
 	print("\n");
 	exit(1);
 }
@@ -203,6 +207,14 @@ sub process_arguments {
 				Usage();
 			}
 			push(@by_spec, $specstr);
+		} elsif($opt =~ m/^--trusted-iface$/) {
+			if(!scalar(@ARGV)) {
+				print("ERROR: --trusted-iface requires an argument.\n");
+				Usage();
+			}
+			my $tiface_str = shift(@ARGV);
+			chomp($tiface_str);
+			map { s/^\s+//; s/\s+$//; push(@trustedifaces, $_); } split(/\s*,\s*/, $tiface_str);
 		} elsif($opt =~ m/^--whitelist$/) {
 			if(!scalar(@ARGV)) {
 				print("ERROR: --whitelist requires an argument.\n");
@@ -356,7 +368,10 @@ unless($use_forward) {
 }
 
 # Loopback always gets through
-add_rule("-A INPUT -i lo -j ACCEPT");
+unshift(@trustedifaces, "lo");
+
+# Trusted interfaces
+map { add_rule("-A INPUT -i $_ -j ACCEPT") } @trustedifaces;
 
 if($drop_ipv6) {
 	# Accept IPv6 on loopback, too many things could break otherwise
