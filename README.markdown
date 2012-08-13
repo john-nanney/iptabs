@@ -106,6 +106,19 @@ Multiple ports may be specified:
 
 Multiple invocations of `--by-spec` are allowed. Unlike `--whitelist` the traffic is subject to the other rules, such as SSHGuard and port scan detection.
 
+Trusted Interface
+-----------------
+
+Trusted interfaces can be marked via `--trusted-iface` with a single interface, or a comma separated list of interfaces. The loopback interface is automatically marked as trusted, so do not bother adding it with this option.
+
+Example of a single trusted interface:
+
+	iptabs --trusted-iface eth1
+
+Example of multiple trusted interfaces:
+
+	iptabs --trusted-iface eth1,eth2,eth4
+
 Whitelisting
 ------------
 
