@@ -342,7 +342,7 @@ print("\n");
 process_arguments;
 
 # If nothing specified, default to allowing SSH on all interfaces
-push(@tcp_services, "all:ssh") unless(scalar(@tcp_services) || scalar(@by_spec) || scalar(@whitelist));
+push(@tcp_services, "all#ssh") unless(scalar(@tcp_services) || scalar(@by_spec) || scalar(@whitelist));
 
 clear_all_tables;
 
