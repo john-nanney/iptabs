@@ -21,7 +21,6 @@ my @udp_services;
 my $dump_to;
 my $iface = "all";
 my @by_spec;
-my @whitelist;
 my $clearonly = 0;
 my @trustedifaces;
 
@@ -215,14 +214,6 @@ sub process_arguments {
 			my $tiface_str = shift(@ARGV);
 			chomp($tiface_str);
 			map { s/^\s+//; s/\s+$//; push(@trustedifaces, $_); } split(/\s*,\s*/, $tiface_str);
-		} elsif($opt =~ m/^--whitelist$/) {
-			if(!scalar(@ARGV)) {
-				print("ERROR: --whitelist requires an argument.\n");
-				Usage();
-			}
-			my $whitelist = shift(@ARGV);
-			push(@whitelist, split(/,/, $whitelist));
-
 		} elsif($opt =~ m/^--clear$/) {
 			$clearonly = 1;
 
@@ -272,13 +263,6 @@ sub clear_all_tables {
 		execute_or_die("ip6tables -X $chain");
 	}
 	close(CHAIN6PIPE);
-}
-
-sub add_whitelist {
-	my $saved_ipv6 = $drop_ipv6;
-	$drop_ipv6 = 1;
-	map { add_rule("-A ACCEPT -s $_ -j ACCEPT"); } @whitelist;
-	$drop_ipv6 = $saved_ipv6;
 }
 
 sub scan_protection {
@@ -354,7 +338,7 @@ print("\n");
 process_arguments;
 
 # If nothing specified, default to allowing SSH on all interfaces
-push(@tcp_services, "all#ssh") unless(scalar(@tcp_services) || scalar(@by_spec) || scalar(@whitelist));
+push(@tcp_services, "all#ssh") unless(scalar(@tcp_services) || scalar(@by_spec));
 
 clear_all_tables;
 
@@ -381,8 +365,6 @@ if($drop_ipv6) {
 
 # Handle pings by limiting to 2 per second
 add_rule("-A INPUT -p icmp -m limit --limit 2/second --limit-burst 3 -j ACCEPT") unless($drop_ping);
-
-add_whitelist;
 
 scan_protection;
 

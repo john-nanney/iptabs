@@ -15,7 +15,7 @@ Features
 * Logging for Port Scan detection
 * Optional Multiple Port Knocking
 * Optional Multi-home support
-* Optional whitelisting of trusted hosts
+* Optional trusted interface specification
 
 Invocation
 ----------
@@ -104,7 +104,7 @@ Multiple ports may be specified:
 
 	iptabs --by-spec 192.168.1.0/24:tcp:ssh,http,443
 
-Multiple invocations of `--by-spec` are allowed. Unlike `--whitelist` the traffic is subject to the other rules, such as SSHGuard and port scan detection.
+Multiple invocations of `--by-spec` are allowed. The traffic is subject to the other rules, such as SSHGuard and port scan detection.
 
 Trusted Interface
 -----------------
@@ -118,20 +118,5 @@ Example of a single trusted interface:
 Example of multiple trusted interfaces:
 
 	iptabs --trusted-iface eth1,eth2,eth4
-
-Whitelisting
-------------
-
-To set a host, list of hosts, or a network as 'trusted' use the `--whitelist` option:
-
-	iptabs --whitelist 192.168.1.0/24
-
-Multiple occurences of `--whitelist` on the command line are supported:
-
-	iptabs --whitelist 10.1.1.2/31,10.1.1.1/32 --dump-to output.sh --whitelist 10.5.0.0/16
-
-Be very careful with this option, it bypassses everything, including port specifiers and sshguard. Whitelisting is only supported for IPv4 for now.
-
-If you do not know what this means or why you might need it, please do not use whitelisting at all. It can make your carefully constructed firewall worthless.
 
 Enjoy!
