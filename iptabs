@@ -201,7 +201,7 @@ sub process_arguments {
 			}
 			my $specstr = shift(@ARGV);
 			chomp($specstr);
-			unless($specstr =~ m/^[0-9\.]+\/[0-9]+:[tu][cd]p:[0-9,]+$/) {
+			unless($specstr =~ m/^[0-9\.]+\/[0-9]+:[tu][cd]p:[0-9,a-zA-Z]+$/) {
 				print("ERROR: --by-spec Cannot figure out spec string.\n");
 				Usage();
 			}
