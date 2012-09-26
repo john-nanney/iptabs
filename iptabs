@@ -21,6 +21,7 @@ my @udp_services;
 my $dump_to;
 my $iface = "all";
 my @by_spec;
+my @droplist;
 my $clearonly = 0;
 my @trustedifaces;
 
@@ -90,6 +91,9 @@ sub Usage {
 	print("\n");
 	print("--trusted-iface IFACE[,IFACEx ...]\n");
 	print("\tMark the interface[s] as trusted, permitting all traffic. Loopback is automatically trusted, so do not add it with this option.\n");
+	print("\n");
+	print("--drop\n");
+	print("\tDrop the specified network/address. Can be specified multiple times.\n");
 	print("\n");
 	exit(1);
 }
@@ -216,6 +220,13 @@ sub process_arguments {
 			map { s/^\s+//; s/\s+$//; push(@trustedifaces, $_); } split(/\s*,\s*/, $tiface_str);
 		} elsif($opt =~ m/^--clear$/) {
 			$clearonly = 1;
+
+		} elsif($opt =~ m/^--drop$/) {
+			if(!scalar(@ARGV)) {
+				print("ERROR: --drop requires an argument.\n");
+				Usage();
+			}
+            push(@droplist, shift(@ARGV));
 
 		} else {
 			print("\n ERROR: Unrecognized command $opt\n") unless($opt =~ m/^--help$/);
@@ -362,6 +373,14 @@ if($drop_ipv6) {
 	execute_or_die("ip6tables -A INPUT -i lo -j ACCEPT");
 	execute_or_die("ip6tables -A INPUT -j DROP");
 }
+
+map {
+    if(m/:/) {
+        execute_or_die("ip6tables -A INPUT -s $_ -j DROP");
+    } else {
+        execute_or_die("iptables -A INPUT -s $_ -j DROP");
+    }
+} @droplist;
 
 # Handle pings by limiting to 2 per second
 add_rule("-A INPUT -p icmp -m limit --limit 2/second --limit-burst 3 -j ACCEPT") unless($drop_ping);
