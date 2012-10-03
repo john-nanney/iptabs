@@ -24,6 +24,8 @@ my @by_spec;
 my @droplist;
 my $clearonly = 0;
 my @trustedifaces;
+my $dos_protect = 0;
+my $dos_conn_protect = 0;
 
 sub Usage {
 	print("\n");
@@ -94,6 +96,12 @@ sub Usage {
 	print("\n");
 	print("--drop\n");
 	print("\tDrop the specified network/address. Can be specified multiple times.\n");
+	print("\n");
+	print("--throttle NUM\n");
+	print("\tProtect against DOS. NUM is the limit per minute for new connections. Bursts to 4x.\n");
+	print("\n");
+	print("--est-throttle NUM\n");
+	print("\tProtect against DOS. NUM is the limit per second of established connections. Bursts to 2x.\n");
 	print("\n");
 	exit(1);
 }
@@ -227,6 +235,20 @@ sub process_arguments {
 				Usage();
 			}
             push(@droplist, shift(@ARGV));
+
+		} elsif($opt =~ m/^--throttle$/) {
+			if(!scalar(@ARGV) || $ARGV[0] !~ m/^[0-9]+$/) {
+				print("ERROR: --throttle requires a numeric argument.\n");
+				Usage();
+			}
+            $dos_conn_protect = shift(@ARGV);
+
+		} elsif($opt =~ m/^--est-throttle$/) {
+			if(!scalar(@ARGV) || $ARGV[0] !~ m/^[0-9]+$/) {
+				print("ERROR: --est-throttle requires a numeric argument.\n");
+				Usage();
+			}
+            $dos_protect = shift(@ARGV);
 
 		} else {
 			print("\n ERROR: Unrecognized command $opt\n") unless($opt =~ m/^--help$/);
@@ -388,7 +410,11 @@ add_rule("-A INPUT -p icmp -m limit --limit 2/second --limit-burst 3 -j ACCEPT")
 scan_protection;
 
 # Accept anything we originated
-add_rule("-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT");
+if($dos_protect) {
+    add_rule("-A INPUT -m state --state ESTABLISHED,RELATED -m limit --limit $dos_protect/second --limit-burst " . $dos_protect * 2 . " -j ACCEPT");
+} else {
+    add_rule("-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT");
+}
 
 do_knocking if(scalar(@tcp_knock_services));
 
@@ -415,7 +441,11 @@ foreach my $tcp_service_string (@tcp_services) {
 		print("Enabling $service (TCP)\n");
 		my $tcp_iface_param = "";
 		$tcp_iface_param = " -i $tcp_iface" unless($tcp_iface =~ m/^all/);
-		add_rule("-A INPUT$tcp_iface_param -p tcp --dport $service -j ACCEPT");
+        if($dos_conn_protect) {
+            add_rule("-A INPUT$tcp_iface_param -p tcp --dport $service -m limit --limit $dos_conn_protect/minute --limit-burst ". $dos_conn_protect * 4 . " -j ACCEPT");
+        } else {
+            add_rule("-A INPUT$tcp_iface_param -p tcp --dport $service -j ACCEPT");
+        }
 	}
 }
 
@@ -425,7 +455,11 @@ foreach my $udp_service_string (@udp_services) {
 		print("Enabling $udpservice (UDP)\n");
 		my $udp_iface_param = "";
 		$udp_iface_param = " -i $udp_iface" unless($udp_iface =~ m/^all/);
-		add_rule("-A INPUT$udp_iface_param -p udp --dport $udpservice -j ACCEPT");
+        if($dos_conn_protect) {
+            add_rule("-A INPUT$udp_iface_param -p udp --dport $udpservice -m limit --limit $dos_conn_protect/minute --limit-burst ". $dos_conn_protect * 4 . " -j ACCEPT");
+        } else {
+            add_rule("-A INPUT$udp_iface_param -p udp --dport $udpservice -j ACCEPT");
+        }
 	}
 }
 
