@@ -266,6 +266,7 @@ sub process_arguments {
 				Usage();
 			}
             my $blacklistfilename = shift(@ARGV);
+            die("No such file $blacklistfilename\n") unless(-f $blacklistfilename);
             my @blflines = qx,cat $blacklistfilename,;
             chomp @blflines;
             map { push(@blacklist, $_) if(length($_) && $_ !~ m/^#/); } @blflines;
@@ -281,6 +282,14 @@ sub process_arguments {
                 add_to_blacklist($ARGV[0]);
                 print("Blacklisted ", $ARGV[0], "\n");
             }
+            exit(0);
+
+		} elsif($opt =~ m/^--badguy-file$/) {
+            my $badguyfilename = shift(@ARGV);
+            die("No such file $badguyfilename\n") unless(-f $badguyfilename);
+            my @bgflines = qx,cat $badguyfilename,;
+            chomp @bgflines;
+            map { if(length($_) && $_ !~ m/^#/) { add_to_blacklist($_); print("Blacklisted $_\n"); } @bgflines;
             exit(0);
 
 		} else {
