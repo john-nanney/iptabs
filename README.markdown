@@ -20,7 +20,7 @@ Features
 Invocation
 ----------
 
-Configuration is a single command line invocation. With no arguments, the firewall will allow incoming SSH connections with IPv4 and IPv6, denying all other incoming connections.
+Configuration is a single command line invocation. With no arguments, the firewall will block all incoming connections.
 
 To display a help message:
 
@@ -28,7 +28,7 @@ To display a help message:
 
 To allow SSH over IPv4 and IPv6:
 
-	iptabs
+	iptabs --enable-tcp ssh
 
 By default pings are throttled to protect from flooding. To disable pings completely:
 
