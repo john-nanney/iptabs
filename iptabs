@@ -21,11 +21,11 @@ my @udp_services;
 my $dump_to;
 my $iface = "all";
 my @by_spec;
-my @droplist;
 my $clearonly = 0;
 my @trustedifaces;
 my $dos_protect = 0;
 my $dos_conn_protect = 0;
+my @blacklist;
 
 sub Usage {
 	print("\n");
@@ -94,14 +94,20 @@ sub Usage {
 	print("--trusted-iface IFACE[,IFACEx ...]\n");
 	print("\tMark the interface[s] as trusted, permitting all traffic. Loopback is automatically trusted, so do not add it with this option.\n");
 	print("\n");
-	print("--drop\n");
-	print("\tDrop the specified network/address. Can be specified multiple times.\n");
-	print("\n");
 	print("--throttle NUM\n");
 	print("\tProtect against DOS. NUM is the limit per minute for new connections. Bursts to 4x.\n");
 	print("\n");
 	print("--est-throttle NUM\n");
 	print("\tProtect against DOS. NUM is the limit per second of established connections. Bursts to 2x.\n");
+	print("\n");
+	print("--blacklist SPEC[,SPEC...]\n");
+	print("\tBlacklist the given host/network. CIDR format, separated by commas.\n");
+	print("\n");
+	print("--blacklist-file FILENAME\n");
+	print("\tBlacklist the given hosts/networks listed in the given file.\n");
+	print("\n");
+	print("--badguy SPEC[,SPEC...]\n");
+	print("\tAdd the given host(s)/network(s) to the blacklist in the currently running firewall.\n");
 	print("\n");
 	exit(1);
 }
@@ -229,13 +235,6 @@ sub process_arguments {
 		} elsif($opt =~ m/^--clear$/) {
 			$clearonly = 1;
 
-		} elsif($opt =~ m/^--drop$/) {
-			if(!scalar(@ARGV)) {
-				print("ERROR: --drop requires an argument.\n");
-				Usage();
-			}
-            push(@droplist, shift(@ARGV));
-
 		} elsif($opt =~ m/^--throttle$/) {
 			if(!scalar(@ARGV) || $ARGV[0] !~ m/^[0-9]+$/) {
 				print("ERROR: --throttle requires a numeric argument.\n");
@@ -249,6 +248,40 @@ sub process_arguments {
 				Usage();
 			}
             $dos_protect = shift(@ARGV);
+
+		} elsif($opt =~ m/^--blacklist$/) {
+			if(!scalar(@ARGV) || $ARGV[0] !~ m/^[abcdef0-9.,\/:]+$/) {
+				print("ERROR: --blacklist requires a CIDR address/network argument.\n");
+				Usage();
+			}
+            if($ARGV[0] =~ m/,/) {
+                map { push(@blacklist, $_); } split(/,/, shift(@ARGV));
+            } else {
+                push(@blacklist, shift(@ARGV));
+            }
+
+		} elsif($opt =~ m/^--blacklist-file$/) {
+			if(!scalar(@ARGV) || ! -f $ARGV[0]) {
+				print("ERROR: --blacklist-file requires a filename argument.\n");
+				Usage();
+			}
+            my $blacklistfilename = shift(@ARGV);
+            my @blflines = qx,cat $blacklistfilename,;
+            chomp @blflines;
+            map { push(@blacklist, $_) if(length($_) && $_ !~ m/^#/); } @blflines;
+
+		} elsif($opt =~ m/^--badguy$/) {
+			if(!scalar(@ARGV) || $ARGV[0] !~ m/^[0-9.,\/:]+$/) {
+				print("ERROR: --badguy requires a CIDR address/network argument.\n");
+				Usage();
+			}
+            if($ARGV[0] =~ m/,/) {
+                map { add_to_blacklist($_); print("Blacklisted $_\n"); } split(/,/, shift(@ARGV));
+            } else {
+                add_to_blacklist($ARGV[0]);
+                print("Blacklisted ", $ARGV[0], "\n");
+            }
+            exit(0);
 
 		} else {
 			print("\n ERROR: Unrecognized command $opt\n") unless($opt =~ m/^--help$/);
@@ -362,6 +395,16 @@ sub do_knocking {
 	}
 }
 
+sub add_to_blacklist {
+    die("add_to_blacklist() needs an argument.\n") unless(defined($_[0]) && length($_[0]));
+    my $to_blacklist = $_[0];
+    if($to_blacklist =~ m/:/) {
+        execute_or_die("ip6tables -A blacklist -s $to_blacklist -j DROP");
+    } else {
+        execute_or_die("iptables -A blacklist -s $to_blacklist -j DROP");
+    }
+}
+
 #-------------#
 # Entry point #
 #-------------#
@@ -393,13 +436,9 @@ if($drop_ipv6) {
 	execute_or_die("ip6tables -A INPUT -j DROP");
 }
 
-map {
-    if(m/:/) {
-        execute_or_die("ip6tables -A INPUT -s $_ -j DROP");
-    } else {
-        execute_or_die("iptables -A INPUT -s $_ -j DROP");
-    }
-} @droplist;
+add_rule("-N blacklist");
+add_rule("-A INPUT -j blacklist");
+map { add_to_blacklist($_); } @blacklist;
 
 # Handle pings by limiting to 2 per second
 add_rule("-A INPUT -p icmp -m limit --limit 2/second --limit-burst 3 -j ACCEPT") unless($drop_ping);
