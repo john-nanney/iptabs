@@ -132,92 +132,95 @@ sub add_rule {
 
 sub process_arguments {
 
-# Process args
-	while(scalar(@ARGV)) {
-		my $opt = shift(@ARGV);
-		if($opt =~ /^--enable-tcp$/) {
-			if(!scalar(@ARGV)) {
+    my @args = @_;
+
+    # Process args
+	while(scalar(@args)) {
+		my $opt = shift(@args);
+        $opt =~ s/^--//;
+		if($opt =~ /^enable-tcp$/) {
+			if(!scalar(@args)) {
 				print("ERROR: --enable-tcp requires an argument.\n");
 				Usage();
 			}
-			push(@tcp_services, $iface . "#" . shift(@ARGV));
+			push(@tcp_services, $iface . "#" . shift(@args));
 
-		} elsif($opt =~ m/^--enable-udp$/) {
-			if(!scalar(@ARGV)) {
+		} elsif($opt =~ m/^enable-udp$/) {
+			if(!scalar(@args)) {
 				print("ERROR: --enable-udp requires an argument.\n");
 				Usage();
 			}
-			push(@udp_services, $iface . "#" . shift(@ARGV));
+			push(@udp_services, $iface . "#" . shift(@args));
 
-		} elsif($opt =~ m/^--interface$/) {
-			if(!scalar(@ARGV)) {
+		} elsif($opt =~ m/^interface$/) {
+			if(!scalar(@args)) {
 				print("ERROR: --interface requires an argument.\n");
 				Usage();
 			}
-			$iface = shift(@ARGV);
+			$iface = shift(@args);
 
-		} elsif($opt =~ m/^--sshguard$/) {
+		} elsif($opt =~ m/^sshguard$/) {
 			$use_sshguard = 1;
 
-		} elsif($opt =~ m/^--forward$/) {
+		} elsif($opt =~ m/^forward$/) {
 			$use_forward = 1;
 			print("WARNING: Enabling forwarding. Please add additional rules to the FORWARD chain.\n");
 
-		} elsif($opt =~ m/^--drop-ipv6$/) {
+		} elsif($opt =~ m/^drop-ipv6$/) {
 			$drop_ipv6 = 1;
 			print("WARNING: Dropping all IPv6 traffic.\n");
 
-		} elsif($opt =~ m/^--drop-ping$/) {
+		} elsif($opt =~ m/^drop-ping$/) {
 			$drop_ping = 1;
 			print("Dropping all ping traffic.\n");
 
-		} elsif($opt =~ m/^--no-drop-null$/) {
+		} elsif($opt =~ m/^no-drop-null$/) {
 			$drop_nullpackets = 0;
 			print("WARNING: Not dropping all NULL packets.\n");
 
-		} elsif($opt =~ m/^--no-drop-fragments$/) {
+		} elsif($opt =~ m/^no-drop-fragments$/) {
 			$drop_fragments = 0;
 			print("Not dropping all fragments.\n");
 
-		} elsif($opt =~ m/^--no-syn-protect$/) {
+		} elsif($opt =~ m/^no-syn-protect$/) {
 			$use_synprotect = 0;
 			print("WARNING: Not using SYN protection.\n");
 
-		} elsif($opt =~ m/^--no-drop-xmas$/) {
+		} elsif($opt =~ m/^no-drop-xmas$/) {
 			$drop_xmas = 0;
 			print("WARNING: Not dropping XMAS packets.\n");
 
-		} elsif($opt =~ m/^--no-drop-finscans$/) {
+		} elsif($opt =~ m/^no-drop-finscans$/) {
 			$drop_finscans = 0;
 			print("WARNING: Not dropping FIN scan packets.\n");
 
-		} elsif($opt =~ m/^--knock$/) {
-			if(!scalar(@ARGV) || $ARGV[0] !~ m/^([a-zA-Z0-9]+:){4}[a-zA-Z0-9]+[ \t\r\n]?$/) {
+		} elsif($opt =~ m/^knock$/) {
+			if(!scalar(@args) || $args[0] !~ m/^([a-zA-Z0-9]+:){4}[a-zA-Z0-9]+[ \t\r\n]?$/) {
 				print("ERROR: --knock requires an argument.\n");
 				Usage();
 			}
-			push(@tcp_knock_services, shift(@ARGV));
+			push(@tcp_knock_services, shift(@args));
 
-		} elsif($opt =~ m/^--no-knock-log$/) {
+		} elsif($opt =~ m/^no-knock-log$/) {
 			print("Disabling port knock logging.\n");
 			$no_knock_log = 1;
 
-		} elsif($opt =~ m/^--dump-to$/) {
-			if(!scalar(@ARGV)) {
+		} elsif($opt =~ m/^dump-to$/) {
+			if(!scalar(@args)) {
 				print("ERROR: --dump-to requires an argument.\n");
 				Usage();
 			}
-			$dump_to = shift(@ARGV);
+			$dump_to = shift(@args);
 			open(DUMP, ">$dump_to") or die("Cannot write to $dump_to $!\n");
 			print(DUMP "#!/bin/bash\n");
 			close(DUMP);
 
-		} elsif($opt =~ m/^--by-spec$/) {
-			if(!scalar(@ARGV)) {
+		} elsif($opt =~ m/^by-spec$/) {
+			if(!scalar(@args)) {
 				print("ERROR: --by-spec requires an argument.\n");
 				Usage();
 			}
-			my $specstr = shift(@ARGV);
+			my $specstr = shift(@args);
 			chomp($specstr);
 			unless($specstr =~ m/^[0-9\.]+\/[0-9]+:[tu][cd]p:[0-9,a-zA-Z]+$/) {
 				print("ERROR: --by-spec Cannot figure out spec string.\n");
@@ -226,76 +229,86 @@ sub process_arguments {
             $specstr =~ s/:/;/g;
             $specstr =~ s/-/:/g;
 			push(@by_spec, $specstr);
-		} elsif($opt =~ m/^--trusted-iface$/) {
-			if(!scalar(@ARGV)) {
+		} elsif($opt =~ m/^trusted-iface$/) {
+			if(!scalar(@args)) {
 				print("ERROR: --trusted-iface requires an argument.\n");
 				Usage();
 			}
-			my $tiface_str = shift(@ARGV);
+			my $tiface_str = shift(@args);
 			chomp($tiface_str);
 			map { s/^\s+//; s/\s+$//; push(@trustedifaces, $_); } split(/\s*,\s*/, $tiface_str);
-		} elsif($opt =~ m/^--clear$/) {
+		} elsif($opt =~ m/^clear$/) {
 			$clearonly = 1;
 
-		} elsif($opt =~ m/^--throttle$/) {
-			if(!scalar(@ARGV) || $ARGV[0] !~ m/^[0-9]+$/) {
+		} elsif($opt =~ m/^throttle$/) {
+			if(!scalar(@args) || $args[0] !~ m/^[0-9]+$/) {
 				print("ERROR: --throttle requires a numeric argument.\n");
 				Usage();
 			}
-            $dos_conn_protect = shift(@ARGV);
+            $dos_conn_protect = shift(@args);
 
-		} elsif($opt =~ m/^--est-throttle$/) {
-			if(!scalar(@ARGV) || $ARGV[0] !~ m/^[0-9]+$/) {
+		} elsif($opt =~ m/^est-throttle$/) {
+			if(!scalar(@args) || $args[0] !~ m/^[0-9]+$/) {
 				print("ERROR: --est-throttle requires a numeric argument.\n");
 				Usage();
 			}
-            $dos_protect = shift(@ARGV);
+            $dos_protect = shift(@args);
 
-		} elsif($opt =~ m/^--blacklist$/) {
-			if(!scalar(@ARGV) || $ARGV[0] !~ m/^[abcdef0-9.,\/:]+$/) {
+		} elsif($opt =~ m/^blacklist$/) {
+			if(!scalar(@args) || $args[0] !~ m/^[abcdef0-9.,\/:]+$/) {
 				print("ERROR: --blacklist requires a CIDR address/network argument.\n");
 				Usage();
 			}
-            if($ARGV[0] =~ m/,/) {
-                map { push(@blacklist, $_); } split(/,/, shift(@ARGV));
+            if($args[0] =~ m/,/) {
+                map { push(@blacklist, $_); } split(/,/, shift(@args));
             } else {
-                push(@blacklist, shift(@ARGV));
+                push(@blacklist, shift(@args));
             }
 
-		} elsif($opt =~ m/^--blacklist-file$/) {
-			if(!scalar(@ARGV) || ! -f $ARGV[0]) {
+		} elsif($opt =~ m/^blacklist-file$/) {
+			if(!scalar(@args) || ! -f $args[0]) {
 				print("ERROR: --blacklist-file requires a filename argument.\n");
 				Usage();
 			}
-            my $blacklistfilename = shift(@ARGV);
+            my $blacklistfilename = shift(@args);
             die("No such file $blacklistfilename\n") unless(-f $blacklistfilename);
             my @blflines = qx,cat $blacklistfilename,;
             chomp @blflines;
             map { push(@blacklist, $_) if(length($_) && $_ !~ m/^#/); } @blflines;
 
-		} elsif($opt =~ m/^--badguy$/) {
-			if(!scalar(@ARGV) || $ARGV[0] !~ m/^[0-9.,\/:]+$/) {
+		} elsif($opt =~ m/^badguy$/) {
+			if(!scalar(@args) || $args[0] !~ m/^[0-9.,\/:]+$/) {
 				print("ERROR: --badguy requires a CIDR address/network argument.\n");
 				Usage();
 			}
-            if($ARGV[0] =~ m/,/) {
-                map { add_to_blacklist($_); print("Blacklisted $_\n"); } split(/,/, shift(@ARGV));
+            if($args[0] =~ m/,/) {
+                map { add_to_blacklist($_); print("Blacklisted $_\n"); } split(/,/, shift(@args));
             } else {
-                add_to_blacklist($ARGV[0]);
-                print("Blacklisted ", $ARGV[0], "\n");
+                add_to_blacklist($args[0]);
+                print("Blacklisted ", $args[0], "\n");
             }
             exit(0);
 
-		} elsif($opt =~ m/^--badguy-file$/) {
-            my $badguyfilename = shift(@ARGV);
+		} elsif($opt =~ m/^badguy-file$/) {
+            my $badguyfilename = shift(@args);
             die("No such file $badguyfilename\n") unless(-f $badguyfilename);
             my @bgflines = qx,cat $badguyfilename,;
             chomp @bgflines;
-            map { if(length($_) && $_ !~ m/^#/) { add_to_blacklist($_); print("Blacklisted $_\n"); } @bgflines;
+            map { if(length($_) && $_ !~ m/^#/) { add_to_blacklist($_); print("Blacklisted $_\n"); } } @bgflines;
             exit(0);
 
+		} elsif($opt =~ m/^file$/) {
+			if(!scalar(@args) || ! -f $args[0]) {
+				print("ERROR: option file requires a filename argument.\n");
+				Usage();
+			}
+            my $argfilename = shift(@args);
+            my @fileargs;
+            map { push(@fileargs, split(/\s+/, $_)) if(length($_) && $_ !~ m/^#/); } qx/cat $argfilename/;
+            process_arguments(@fileargs);
+
 		} else {
-			print("\n ERROR: Unrecognized command $opt\n") unless($opt =~ m/^--help$/);
+			print("\n ERROR: Unrecognized command $opt\n") unless($opt =~ m/^help$/);
 			Usage();
 		}
 	}
@@ -422,7 +435,7 @@ sub add_to_blacklist {
 
 print("\n");
 
-process_arguments;
+process_arguments @ARGV;
 
 clear_all_tables;
 
