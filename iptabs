@@ -223,6 +223,8 @@ sub process_arguments {
 				print("ERROR: --by-spec Cannot figure out spec string.\n");
 				Usage();
 			}
+            $specstr =~ s/:/;/g;
+            $specstr =~ s/-/:/g;
 			push(@by_spec, $specstr);
 		} elsif($opt =~ m/^--trusted-iface$/) {
 			if(!scalar(@ARGV)) {
@@ -473,7 +475,7 @@ if($use_sshguard) {
 my $saveddropipv6 = $drop_ipv6;
 $drop_ipv6 = 1;
 foreach my $spec (@by_spec) {
-	my ($nh, $protocol, $ports) = split(/:/, $spec);
+	my ($nh, $protocol, $ports) = split(/;/, $spec);
 	foreach my $p (split(/,/, $ports)) {
 		add_rule("-A INPUT -p $protocol -s $nh --dport $p -j ACCEPT");
 	}
