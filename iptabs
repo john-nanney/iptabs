@@ -483,6 +483,7 @@ if($use_sshguard) {
 	print("Enabling SSHGuard protection.\n");
 	add_rule("-N sshguard");
 	add_rule("-A INPUT -j sshguard");
+	add_rule("-A OUTPUT -j sshguard");
 }
 
 # IPv6 doesn't grok IPv4 addresses
