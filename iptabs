@@ -462,6 +462,7 @@ if($drop_ipv6) {
 
 add_rule("-N blacklist");
 add_rule("-A INPUT -j blacklist");
+add_rule("-A OUTPUT -j blacklist");
 map { add_to_blacklist($_); } @blacklist;
 
 # Handle pings by limiting to 2 per second
